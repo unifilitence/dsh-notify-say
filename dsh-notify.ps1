@@ -395,15 +395,79 @@ if ($SoundOnly -or $Preview) {
       $launchXml = (& $xmlEscape $toastLaunch)
       $xml.LoadXml("<toast activationType=`"protocol`" launch=`"$launchXml`"><visual><binding template=`"ToastGeneric`"><text>$titleXml</text><text>$bodyXml</text>$detailXml</binding></visual></toast>")
     $toast = New-Object Windows.UI.Notifications.ToastNotification $xml
-    # 2026-09-25 样式统一：改用官方壳注册的 AUMID（Get-StartApps 实证 com.deepseek.dsh
-    # 注册为 "DeepSeek Harness"）→ 来源名与角标自动随壳；失败回退借用身份，保证通知不丢。
-    try {
-      [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('com.deepseek.dsh').Show($toast)
-    } catch {
-      [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Microsoft.Windows.Shell.RunDialog').Show($toast)
+    # 2026-10-25：发通知身份改成**按本机实际注册的 AUMID 解析**，不再写死 com.deepseek.dsh。
+    #
+    # 为什么：官方壳的 AUMID 并非处处一致 —— 官方安装包注册 com.deepseek.dsh，
+    # 而 Electron 默认身份（开始菜单快捷方式里带的正是它）是 electron.app.<ProductName>。
+    # 一旦这里写死的那个没在本机注册，Windows 仍会收下 Toast（**不抛异常**，所以原有
+    # try/catch 兜不住），但会把 **AUMID 原文当应用名印上去、且画不出名字旁边的小图标**。
+    # 用户实测截图里标题行就是 "com.deepseek.dsh"。
+    #
+    # 解析顺序见 Get-ToastAppId：磁盘缓存 → Get-StartApps 里注册为「DeepSeek Harness」
+    # 的项 → 退回历史行为。缓存是必要的：本机实测 Get-StartApps 约 540ms，
+    # 每条通知都跑一次会让提示音明显滞后。
+    $toastAumids = @(Get-ToastAppId)
+    foreach ($toastAumid in $toastAumids) {
+      try {
+        [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($toastAumid).Show($toast)
+        $shown = $true
+        break
+      } catch { }
     }
-    $shown = $true
   } catch { $shown = $false }
+}
+
+# ── 发通知用的 AUMID 解析（2026-10-25）────────────────────────────────────
+#
+# 为什么要探测而不是写死：见调用处的注释 —— AUMID 没注册时 Toast 不报错，
+# 只是把 AUMID 原文当应用名、且没有小图标，属于"静默降级"，最难排查的那类。
+#
+# 为什么要缓存：本机实测 Get-StartApps 约 540ms，而 ps1 是**每条通知起一个进程**，
+# 不缓存就等于每条通知都晚半秒出声。缓存文件 %LOCALAPPDATA%\dsh-notify-say\toast-aumid.txt
+# 只有一行；删掉它即强制重新探测（换安装包或换机器后排查用）。
+function Get-ToastAppId {
+  $cacheDir = Join-Path $env:LOCALAPPDATA 'dsh-notify-say'
+  $cacheFile = Join-Path $cacheDir 'toast-aumid.txt'
+
+  # 1) 缓存命中：0 成本
+  try {
+    if (Test-Path -LiteralPath $cacheFile) {
+      $cached = (Get-Content -LiteralPath $cacheFile -Raw -ErrorAction Stop).Trim()
+      if ($cached) { return @($cached) }
+    }
+  } catch { }
+
+  # 2) 探测：开始菜单里注册为「DeepSeek Harness」的那一项，AppID 就是 Windows
+  #    用来找图标与显示名的 AUMID。
+  $found = @()
+  try {
+    $hit = Get-StartApps -ErrorAction Stop |
+      Where-Object { $_.Name -match 'DeepSeek\s*Harness' -or $_.AppID -match 'deepseek' } |
+      Select-Object -First 1
+    if ($hit -and $hit.AppID) { $found += [string]$hit.AppID }
+  } catch { }
+
+  # 3) 兜底：历史写死的身份 + 借用身份。探测不到时行为与改动前完全一致。
+  $found += @('com.deepseek.dsh', 'Microsoft.Windows.Shell.RunDialog')
+
+  # 去重保序
+  $seen = @{}
+  $list = @()
+  foreach ($id in $found) {
+    if ($id -and -not $seen.ContainsKey($id)) {
+      $seen[$id] = $true
+      $list += $id
+    }
+  }
+
+  # 只缓存"探测成功"的结果；纯兜底不写缓存，避免一次探测失败被永久固化。
+  if ($list.Count -gt 2) {
+    try {
+      New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
+      Set-Content -LiteralPath $cacheFile -Value $list[0] -Encoding ASCII -NoNewline
+    } catch { }
+  }
+  return $list
 }
 
 function global:Play-Chime {

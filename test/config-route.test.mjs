@@ -210,3 +210,68 @@ test('R8: 文件层损坏时拒绝写入（不覆盖用户数据）', async () =
   // 原文件必须保持原样，供人工救
   assert.equal(readFileSync(p, 'utf8'), '{ this is not valid json');
 });
+
+// ── R9: installed 字段（v0.5.6，issue #3 的后端一半）────────────────────────
+//
+// 为什么这条必须在**后端**测：前端 voice-options.test.mjs 是拿桩数据渲染的，
+// 它证明"拿到 installed 就能多出选项"，证明不了"/config 真的会返回 installed"。
+// 中间隔着 createConfigRoute 的 opts 透传、installedList() 的过滤与异常兜底，
+// 任何一处写错，前端那 6 条断言照样全绿 —— 而用户的下拉依旧看不到已下载音色。
+test('R9: 注入 getInstalled 时，GET /config 带上已安装音色列表', async () => {
+  const p = configPath();
+  try { if (p && existsSync(p)) unlinkSync(p); } catch { /* ignore */ }
+  const r = createConfigRoute({
+    onChanged: () => {},
+    getEffective: () => ({ volume: 100 }),
+    getInstalled: () => ['zundamon-normal', 'zh-soft-female', 'tohoku-zunko'],
+  });
+
+  const { code, doc } = await call(r, { url: GET_URL });
+  assert.equal(code, 200);
+  assert.deepEqual(doc.installed, ['zundamon-normal', 'zh-soft-female', 'tohoku-zunko']);
+  // 原有字段一个都不能少 —— 这是改响应形状时最容易碰坏的地方
+  assert.ok(doc.values && typeof doc.values === 'object', 'values 必须仍在');
+  assert.ok(Array.isArray(doc.keys), 'keys 必须仍在');
+});
+
+test('R10: 没注入 getInstalled 时不返回 installed（既有行为逐字不变）', async () => {
+  const p = configPath();
+  try { if (p && existsSync(p)) unlinkSync(p); } catch { /* ignore */ }
+  const r = createConfigRoute({ onChanged: () => {}, getEffective: () => ({ volume: 100 }) });
+
+  const { code, doc } = await call(r, { url: GET_URL });
+  assert.equal(code, 200);
+  assert.equal(Object.prototype.hasOwnProperty.call(doc, 'installed'), false,
+    '不注入就不该出现这个键：老的调用方/测试不该看到新字段');
+});
+
+test('R11: getInstalled 抛异常时退回空数组，而不是让 /config 整个 500', async () => {
+  // 真实场景：用户目录权限异常、盘符掉了、readdir 抛 EPERM。
+  // 这时正确的降级是"下拉退回内置清单"，绝不能连配置页都打不开。
+  const p = configPath();
+  try { if (p && existsSync(p)) unlinkSync(p); } catch { /* ignore */ }
+  const r = createConfigRoute({
+    onChanged: () => {},
+    getEffective: () => ({ volume: 100 }),
+    getInstalled: () => { throw new Error('EPERM'); },
+  });
+
+  const { code, doc } = await call(r, { url: GET_URL });
+  assert.equal(code, 200, '一个可选字段拿不到，不该拖垮整个配置读取');
+  assert.deepEqual(doc.installed, []);
+});
+
+test('R12: getInstalled 返回脏数据时只保留非空字符串', async () => {
+  const p = configPath();
+  try { if (p && existsSync(p)) unlinkSync(p); } catch { /* ignore */ }
+  const r = createConfigRoute({
+    onChanged: () => {},
+    getEffective: () => ({ volume: 100 }),
+    getInstalled: () => ['ok-key', '', null, 42, { a: 1 }, 'zh-mid-male'],
+  });
+
+  const { code, doc } = await call(r, { url: GET_URL });
+  assert.equal(code, 200);
+  assert.deepEqual(doc.installed, ['ok-key', 'zh-mid-male'],
+    '非字符串必须滤掉，否则前端 appendInstalled 会拿对象去算前缀');
+});

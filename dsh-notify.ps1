@@ -205,6 +205,36 @@ function Pick-RandomWavFromRoots([string]$Pool, [string]$Pattern) {
   return ($all | Get-Random).FullName
 }
 
+# v0.5.5（issue #1）：**只**在同语系里随机取一句，取不到就返回空（不退回未过滤）。
+#
+# 与 Pick-RandomWavFromRoots 的区别只有一条：那边「过滤后为空 → 退回未过滤」
+# （宁可放别的语言也不要静音）；这边**故意不退回**，因为它的用途是
+# "用户点的是中文音色，能不能给一句中文"，嫁接到日语上就正好是 issue #1 那个 bug。
+function Pick-RandomWavInLang([string]$Pool, [string]$WantLang, [string]$Pattern) {
+  if (-not $WantLang) { return '' }
+  $all = @()
+  foreach ($root in $script:voiceRoots) {
+    $dir = if ($Pool) { Join-Path $root $Pool } else { $root }
+    if (-not (Test-Path -LiteralPath $dir)) { continue }
+    $files = @(Get-ChildItem -LiteralPath $dir -File -Filter $Pattern -ErrorAction SilentlyContinue)
+    foreach ($f in $files) { $all += $f }
+  }
+  if ($all.Count -eq 0) { return '' }
+  $same = @(Select-WavByLang $all $WantLang)
+  if ($same.Count -eq 0) { return '' }
+  return ($same | Get-Random).FullName
+}
+
+# v0.5.5（issue #1）：从音色 key 反推语系。
+#
+# 用前缀而不是查表：`zh-` 前缀就是命名契约本身（见下方 Select-WavByLang 的注释），
+# 清单会漂移、前缀不会。空 key（随机模式）返回空，调用方据此跳过同语系回退。
+function Get-VoiceLangOf([string]$Key) {
+  if (-not $Key) { return '' }
+  if ($Key -like 'zh-*') { return 'zh' }
+  return 'ja'
+}
+
 # 在全部候选根里找某个精确文件名（前面的根优先）。
 function Find-InVoiceRootsExact([string]$Pool, [string]$FileName) {
   foreach ($root in $script:voiceRoots) {
@@ -231,6 +261,8 @@ function Select-WavByLang($Files, [string]$Lang) {
 }
 
 $picked = ''
+# v0.5.5（issue #1）：换音色/换语言时留痕，供下面日志点写 [voice-miss]。
+$script:voiceMissNote = ''
 # 自定义音频的上限（v0.4.8）。
 #
 # 为什么要限：提醒音是"打断你一下"的东西，不是播客。用户完全可能
@@ -284,11 +316,34 @@ if ($Kind -ne 'chime' -and -not $script:sysToneName -and -not $picked) {
   $wantVoice = $Voice
   if ($Mode -eq 'random') { $wantVoice = '' }
   if ($wantVoice -and $wantVoice -notmatch '^\w[\w-]*$') { $wantVoice = '' }
+  # v0.5.5（issue #1）：记住"用户点的是哪种语言"，用于同语系回退与 miss 留痕。
+  # 空 key（随机模式）时为空 —— 那种情况本来就该按 -Lang 走，不涉"点错了"。
+  $wantLang = Get-VoiceLangOf $wantVoice
+  # 语言偏好的优先级：用户点选的音色 > -Lang（宿主按 voiceLang 传）。
+  # 为什么点选优先：-Voice 是**最具体**的意图，-Lang 只是池子级别的偏好。
+  $prefLang = if ($wantLang) { $wantLang } else { $Lang }
   if ($wantVoice) {
     $picked = Pick-RandomWavFromRoots $voicePool ($wantVoice + '~*.wav')
     if (-not $picked) {
       $pf = Find-InVoiceRootsExact $voicePool ($wantVoice + '.wav')
       if ($pf) { $picked = $pf }
+    }
+    # v0.5.5（issue #1 的主修）：**同语系回退，排在一切跨语言兜底之前**。
+    #
+    # 修的病：发布包只带 2 个音色（日语 zundamon-normal + 中文 zh-soft-female），
+    # 用户在设置页选了未安装的 zh-clear-female，原链路直接一路落到 master-voice.wav
+    # —— 那是「主人、任務完了です！」的日语，与用户明确选择的中文正好相反，
+    # 而且全程不打日志，用户只听见"怎么变日语了"。
+    #
+    # 语义：同一句话（同一个池）换个音色说，远好于换成另一种语言说。
+    # 这里用 Pick-RandomWavInLang（**不退回未过滤**），所以"装的中文音色一句都不剩"时
+    # 它返回空，链路继续往下走老兜底，不会反而把行为变得更差。
+    if (-not $picked -and $prefLang) {
+      $picked = Pick-RandomWavInLang $voicePool $prefLang '*.wav'
+      # done 池的中文台词都在根目录；子池（fail/question/approval）才是同池。
+      # ⚠️ fail/chime **不得**越到 done 池（跨池由下方 $noDoneFallback 拦截，
+      #    这里必须同样拦 —— 否则失败会播「任務完了です」的台词，正是 2026-10-17 那条护栏）。
+      if (-not $picked -and -not $noDoneFallback) { $picked = Pick-RandomWavInLang '' $prefLang '*.wav' }
     }
     # fail/chime 的池内兜底（2026-10-17，独立复核 I-1 提出后补）：
     # fail 池只覆盖 16 个基础音色，而 done 池有 103 个 key（含 -kansai-N / -extra-N 变体）。
@@ -315,6 +370,25 @@ if ($Kind -ne 'chime' -and -not $script:sysToneName -and -not $picked) {
     $pool = @(Get-ChildItem -LiteralPath $SoundDir -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in '.mp3', '.wav' })
     if ($pool.Count -gt 0) { $picked = ($pool | Get-Random).FullName }
   }
+
+  # v0.5.5（issue #1 的另一半）：**留痕**。原链路换音色时一声不响，
+  # 用户只能听到"怎么变日语了"，提 issue 时也拿不出证据。
+  #
+  # 判据只看两件事，都是可观察事实、不做推测：
+  #   ① 点选的音色一个字都没取到（≠ 没装，也可能只是该池没这句）；
+  #   ② 最终落地的文件语系 与 用户表达的语言偏好 不一致。
+  # 写进 $script:voiceMissNote，由下方日志点统一落 [voice-miss]（本块执行时
+  # Write-NotifyLog 还没定义，PowerShell 是顺序执行到函数定义处才生效，不能在这里调）。
+  if ($picked -and $wantVoice) {
+    $pickedName0 = Split-Path $picked -Leaf
+    $pickedKey0 = $pickedName0 -replace '~.*$', '' -replace '\.wav$', ''
+    $pickedLang0 = Get-VoiceLangOf $pickedKey0
+    if ($pickedKey0 -ne $wantVoice) {
+      # 换了音色（同一句话换个声音说）。语言是否也变了分开标，读日志时一眼能分。
+      $tag = if ($wantLang -and $pickedLang0 -and ($pickedLang0 -ne $wantLang)) { 'LANG-SWAP' } else { 'voice-swap' }
+      $script:voiceMissNote = "$tag requested=$wantVoice -> $pickedName0"
+    }
+  }
 }
 $script:playFile = $picked
 
@@ -329,9 +403,18 @@ public static class DshNotifyMci {
 } catch { }
 
 # 日志：best-effort 落 %TEMP%（不写插件包/profile 目录，避免污染安装物）
+#
+# v0.5.4：可用 DSH_NOTIFY_SAY_LOG_DIR 覆盖目录，必须与 lib/log-path.js 同口径 ——
+# `[plan]` / `[skip]` 是 Node 侧写的，`[toast]` / `[preview]` 是这里写的，
+# 两边不落同一个文件就没法按时间顺序对照"这一刻到底播了还是没播"。
 $logFile = ''
 try {
-  $logDir = Join-Path ([System.IO.Path]::GetTempPath()) 'dsh-notify-say'
+  $logDir = $env:DSH_NOTIFY_SAY_LOG_DIR
+  if ([string]::IsNullOrWhiteSpace($logDir)) {
+    $logDir = Join-Path ([System.IO.Path]::GetTempPath()) 'dsh-notify-say'
+  } else {
+    $logDir = $logDir.Trim()
+  }
   if (-not (Test-Path -LiteralPath $logDir)) { New-Item -ItemType Directory -Force -Path $logDir | Out-Null }
   $logFile = Join-Path $logDir 'notify.log'
 
@@ -557,19 +640,27 @@ function global:Play-VoiceLine {
 
 $pickedName = if ($script:playFile) { Split-Path $script:playFile -Leaf } else { if ($Kind -eq 'chime') { 'chime' } else { 'none' } }
 
+# v0.5.5（issue #1）：命中"换了音色/换了语言"时单独留一行日志 —— 这是用户提 issue 时
+# 唯一能拿出来的证据（原链路一声不响，用户只听见"怎么变日语了"）。
+# 放在这里而不是选音块里，是因为 Write-NotifyLog 直到上方才定义完（PowerShell 顺序执行）。
+if ($script:voiceMissNote) { Write-NotifyLog 'voice-miss' $script:voiceMissNote '' }
+# 统一的后缀标记：**日志与 Write-Host 都要拼**，否则用户当场（-Preview）看不到，
+# 只有事后翻日志才知道被换了音色 —— 那正是 issue #1 抱怨的"静默"。
+$missTag = if ($script:voiceMissNote) { ' [voice-miss]' } else { '' }
+
 if ($Preview) {
   if (-not $NoSound) { Play-VoiceLine }
   $soundTag = if ($NoSound) { '（静音）' } elseif ($script:lastSound) { " + 音效 $script:lastSound" } else { ' + 兜底提示音' }
-  Write-NotifyLog 'preview' ("-Voice $Voice pick=$pickedName$soundTag") ''
-  Write-Host ("[dsh-notify-say] OK 试听 [$Kind] pick=" + $pickedName + $soundTag) -ForegroundColor Green
+  Write-NotifyLog 'preview' ("-Voice $Voice pick=$pickedName$soundTag$missTag") ''
+  Write-Host ("[dsh-notify-say] OK 试听 [$Kind] pick=" + $pickedName + $soundTag + $missTag) -ForegroundColor Green
 } elseif ($shown) {
   if (-not $NoSound) { Play-VoiceLine }
   $soundTag = if ($NoSound) { '（静音）' } elseif ($script:lastSound) { " + 音效 $script:lastSound" } else { ' + 兜底提示音' }
-  Write-NotifyLog 'toast' ("pick=$pickedName$soundTag") ("title=$Title body=$Body")
-  Write-Host ("[dsh-notify-say] OK Toast [$Kind] pick=" + $pickedName + $soundTag) -ForegroundColor Green
+  Write-NotifyLog 'toast' ("pick=$pickedName$soundTag$missTag") ("title=$Title body=$Body")
+  Write-Host ("[dsh-notify-say] OK Toast [$Kind] pick=" + $pickedName + $soundTag + $missTag) -ForegroundColor Green
 } else {
   if (-not $NoSound) { Play-VoiceLine }
   $soundTag = if ($NoSound) { '（静音）' } elseif ($script:lastSound) { " + 音效 $script:lastSound" } else { ' + 兜底提示音' }
-  Write-NotifyLog 'FALLBACK' ("pick=$pickedName$soundTag") ("title=$Title body=$Body")
-  Write-Host ("[dsh-notify-say] (Toast 不可用，走兜底) [$Kind] pick=" + $pickedName + $soundTag) -ForegroundColor Yellow
+  Write-NotifyLog 'FALLBACK' ("pick=$pickedName$soundTag$missTag") ("title=$Title body=$Body")
+  Write-Host ("[dsh-notify-say] (Toast 不可用，走兜底) [$Kind] pick=" + $pickedName + $soundTag + $missTag) -ForegroundColor Yellow
 }

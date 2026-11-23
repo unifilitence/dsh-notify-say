@@ -1,6 +1,6 @@
 {
     "name":  "dsh-notify-say",
-    "version":  "0.5.3",
+    "version":  "0.5.7",
     "description":  "Desktop notifications for DSH Desktop that actually speak: Windows TTS out of the box (zero download), VOICEVOX voice packs optional, a selectable system-sound fallback, and an idle gate that waits for running subagents before saying the turn is done. Includes a settings-page GUI (sound source, per-event overrides, jump-back-to-session, cooldowns) and a self hot-reload for development.",
     "license":  "MIT",
     "type":  "module",
@@ -58,11 +58,13 @@
                     "dsh":  "\u003e=0.2.1-rc.2 \u003c0.3.0"
                 },
     "scripts":  {
-                    "test":  "node --test",
-                    "test:all":  "node --test \u0026\u0026 node --import ./test/route-loader-register.mjs --test test/fail-route.test.mjs test/audio-wiring.test.mjs",
-                    "test:route":  "node --import ./test/route-loader-register.mjs --test test/fail-route.test.mjs",
-                    "test:audio-wire":  "node --import ./test/route-loader-register.mjs --test test/audio-wiring.test.mjs",
-                    "check:client":  "node ./test/client-bundle.test.mjs"
+                    "test":  "node --import ./test/test-env-setup.mjs --test",
+                    "test:route":  "node --import ./test/test-env-setup.mjs --import ./test/route-loader-register.mjs --test test/fail-route.test.mjs",
+                    "test:audio-wire":  "node --import ./test/test-env-setup.mjs --import ./test/route-loader-register.mjs --test test/audio-wiring.test.mjs",
+                    "test:toast":  "node --import ./test/test-env-setup.mjs --import ./test/route-loader-register.mjs --test test/toast-sound-channels.test.mjs",
+                    "test:all":  "node --import ./test/test-env-setup.mjs --test \u0026\u0026 node --import ./test/test-env-setup.mjs --import ./test/route-loader-register.mjs --test test/fail-route.test.mjs test/audio-wiring.test.mjs test/toast-sound-channels.test.mjs test/voice-label.test.mjs test/ptc-question.test.mjs",
+                    "check:client":  "node ./test/client-bundle.test.mjs",
+                    "test:ptc":  "node --import ./test/test-env-setup.mjs --import ./test/route-loader-register.mjs --test test/ptc-question.test.mjs"
                 },
     "dsh":  {
                 "manifestVersion":  1,

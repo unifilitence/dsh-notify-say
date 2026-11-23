@@ -28,15 +28,25 @@ const CLIENT = readFileSync(join(ROOT, 'lib', 'client.js'), 'utf8');
 async function withTemp(fn) {
   const old = process.env.TEMP;
   const oldTmp = process.env.TMP;
+  // v0.5.4：日志目录现在优先认 DSH_NOTIFY_SAY_LOG_DIR（见 lib/log-path.js）。
+  // 只改 TEMP 已经不管用了 —— 测试预加载的 test-env-setup.mjs 会把覆盖变量指向
+  // 另一个临时目录，于是 seedLog 写的文件根本不是被测代码读的那个。
+  // 三个都要设：覆盖变量（优先级最高）+ TEMP/TMP（无覆盖时的回落路径，G1/G7 用它）。
+  const oldLogDir = process.env.DSH_NOTIFY_SAY_LOG_DIR;
   const dir = join(tmpdir(), `diag-${Math.random().toString(36).slice(2, 10)}`);
   mkdirSync(dir, { recursive: true });
   process.env.TEMP = dir;
   process.env.TMP = dir;
+  // 注意：覆盖变量指的是**日志目录本身**（不含 dsh-notify-say 这一层），
+  // 而 seedLog() 写的是 <dir>/dsh-notify-say —— 两者必须对齐，否则照样读不到。
+  process.env.DSH_NOTIFY_SAY_LOG_DIR = join(dir, 'dsh-notify-say');
   try {
     return await fn(dir);
   } finally {
     if (old === undefined) delete process.env.TEMP; else process.env.TEMP = old;
     if (oldTmp === undefined) delete process.env.TMP; else process.env.TMP = oldTmp;
+    if (oldLogDir === undefined) delete process.env.DSH_NOTIFY_SAY_LOG_DIR;
+    else process.env.DSH_NOTIFY_SAY_LOG_DIR = oldLogDir;
     try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
   }
 }

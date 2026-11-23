@@ -62,7 +62,13 @@ $ErrorActionPreference = 'Stop'
 function Write-Log([string]$msg) {
   if ($Preview) { return }
   try {
-    $dir = Join-Path $env:TEMP 'dsh-notify-say'
+    # v0.5.4：与 lib/log-path.js / dsh-notify.ps1 同口径，支持覆盖目录。
+    $dir = $env:DSH_NOTIFY_SAY_LOG_DIR
+    if ([string]::IsNullOrWhiteSpace($dir)) {
+      $dir = Join-Path $env:TEMP 'dsh-notify-say'
+    } else {
+      $dir = $dir.Trim()
+    }
     if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
     $line = ('{0} [tts] {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $msg)
     Add-Content -LiteralPath (Join-Path $dir 'notify.log') -Value $line -Encoding UTF8 -ErrorAction SilentlyContinue

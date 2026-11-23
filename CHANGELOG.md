@@ -3,6 +3,26 @@
 > 本文件由 `tools/release-build.ps1` 从开发提交自动生成，**请勿手工编辑**。
 > 只列面向使用者的变更（新增功能与修复），不含内部维护提交。
 
+## v0.5.7 — 2026-11-23
+
+- fix(notify-say): #5 PTC/code-mode 下提问提醒永不触发（v0.5.7）
+
+## v0.5.6 — 2026-11-23
+
+- fix(notify-say): #3 音色下拉收下已下载音色，下拉深色可读（v0.5.6）
+
+## v0.5.5 — 2026-11-23
+
+- fix(notify-say): #1 选未安装音色时改同语系回退，并留 voice-miss 痕（v0.5.5）
+
+## v0.5.4 — 2026-11-10
+
+- fix(voice): 首帧配置也要走迁移 —— refreshConfig 抛异常时老用户会停在未迁移状态
+- fix(voice): 迁移判据只看 config.json —— 真机上 patch 层无法区分「显式选择」与「schema 默认」
+- fix(test): D16b 只扫被 git 跟踪的文件，不再把 .snapshots 历史快照算成违规
+- fix(release): 发布包 package.json 的 CRLF，以及 D16b 在三种仓库形态下的误报
+- fix(test): 测试不再污染用户真实 notify.log（v0.5.4）
+
 ## v0.5.3 — 2026-10-24
 
 - feat(voice): 中日语音分开，随机模式不再中日混播（voiceLang）
@@ -326,8 +346,5 @@
 
 ## 未发布
 
-- fix(voice): 首帧配置也要走迁移 —— refreshConfig 抛异常时老用户会停在未迁移状态
-- fix(voice): 迁移判据只看 config.json —— 真机上 patch 层无法区分「显式选择」与「schema 默认」
-- fix(test): D16b 只扫被 git 跟踪的文件，不再把 .snapshots 历史快照算成违规
-- fix(release): 发布包 package.json 的 CRLF，以及 D16b 在三种仓库形态下的误报
+- fix(release): 发布包的 scripts 改为继承源，别让 L8 卡死发版
 

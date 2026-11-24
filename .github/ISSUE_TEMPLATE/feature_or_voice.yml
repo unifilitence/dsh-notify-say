@@ -1,0 +1,31 @@
+name: 功能建议 / 新音色申请
+description: 希望增加新功能，或申请收录新的 VOICEVOX / 中文音色
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        欢迎提出改进想法或申请新音色！
+        注意：新音色必须通过官方使用条款原文核对（确认允许以独立 WAV 语音包形式再分发并保留署名），并非所有角色都可收录。
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: 建议类型
+      options:
+        - 功能改进 / 新特性
+        - 申请新增音色
+        - 文档 / 界面体验优化
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 具体想法或音色信息
+      description: 如果是申请新音色，请尽量附上角色名及官方条款页面链接
+      placeholder: |
+        使用场景 / 期望效果：
+    validations:
+      required: true

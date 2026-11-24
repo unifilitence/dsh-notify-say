@@ -27,9 +27,15 @@ import { existsSync, mkdtempSync, readdirSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { TOOLING_PS, HAS_TOOLING_PS } from './ps-interp.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BUILDER = join(ROOT, 'tools', 'release-build.ps1');
+
+// `tools/release-build.ps1` 是**维护者工具**，带 `#Requires -Version 7.0`（ADR-0015 L3），
+// 必须用 pwsh 7 跑；用 5.1 会撞 ScriptRequiresUnmatchedPSVersion，那是环境缺失不是代码缺陷。
+// 本机没装 pwsh 7 时这些用例 skip（见 test/ps-interp.mjs 的两类脚本说明）。
+const SKIP_NO_PS7 = !HAS_TOOLING_PS && '本机没有 PowerShell 7（pwsh.exe），release-build.ps1 需要它';
 
 /** 递归找匹配的文件（不引第三方库）。 */
 function findFiles(dir, predicate, out = []) {
@@ -62,7 +68,7 @@ function findBannedAudio(dir, voiceKey) {
 /** 跑一次发布包构建，返回目标目录。 */
 function buildRelease(extraArgs) {
   const dest = mkdtempSync(join(tmpdir(), 'rel-guard-'));
-  execFileSync('powershell.exe', [
+  execFileSync(TOOLING_PS, [
     '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', BUILDER,
     '-Destination', dest, '-Force', ...extraArgs,
   ], { encoding: 'utf8', timeout: 300_000 });
@@ -70,7 +76,7 @@ function buildRelease(extraArgs) {
 }
 
 // ── P1: 默认参数下不包含个人声音 ────────────────────────────────────────
-test('P1: 默认参数构建的发布包不含 my-voice 文件', () => {
+test('P1: 默认参数构建的发布包不含 my-voice 文件', { skip: SKIP_NO_PS7 }, () => {
   if (!existsSync(BUILDER)) return;
   const dest = buildRelease([]);
   const leaked = findBannedAudio(dest, 'my-voice');
@@ -80,7 +86,7 @@ test('P1: 默认参数构建的发布包不含 my-voice 文件', () => {
 });
 
 // ── P2: -KeepAllVoices 也必须挡住（关键：原实现会漏）────────────────────
-test('P2: -KeepAllVoices 也无法带出 my-voice（黑名单优先于一切参数）', () => {
+test('P2: -KeepAllVoices 也无法带出 my-voice（黑名单优先于一切参数）', { skip: SKIP_NO_PS7 }, () => {
   if (!existsSync(BUILDER)) return;
   const dest = buildRelease(['-KeepAllVoices']);
   const leaked = findBannedAudio(dest, 'my-voice');
@@ -90,7 +96,7 @@ test('P2: -KeepAllVoices 也无法带出 my-voice（黑名单优先于一切参�
 });
 
 // ── P3: 防护不能误伤其它音色 ────────────────────────────────────────────
-test('P3: 防护只挡 my-voice，其它音色照常保留', () => {
+test('P3: 防护只挡 my-voice，其它音色照常保留', { skip: SKIP_NO_PS7 }, () => {
   if (!existsSync(BUILDER)) return;
   const dest = buildRelease(['-KeepAllVoices']);
   const wavs = findFiles(dest, (n) => n.toLowerCase().endsWith('.wav'));
@@ -100,9 +106,9 @@ test('P3: 防护只挡 my-voice，其它音色照常保留', () => {
 });
 
 // ── P4: 源码里必须有这道防护的声明 ──────────────────────────────────────
-test('P4: release-build.ps1 里有明确的 NeverShip 黑名单', () => {
+test('P4: release-build.ps1 里有明确的 NeverShip 黑名单', { skip: SKIP_NO_PS7 }, () => {
   if (!existsSync(BUILDER)) return;
-  const src = execFileSync('powershell.exe', [
+  const src = execFileSync(TOOLING_PS, [
     '-NoProfile', '-Command',
     `Get-Content -LiteralPath '${BUILDER.replace(/'/g, "''")}' -Raw`,
   ], { encoding: 'utf8' });
@@ -113,7 +119,7 @@ test('P4: release-build.ps1 里有明确的 NeverShip 黑名单', () => {
 });
 
 // ── P5: mochiko 必须被阻断（许可明确禁止再分发）──────────────────────────
-test('P5: mochiko 不进发布包（官方规约禁止无偿配发音声素材）', () => {
+test('P5: mochiko 不进发布包（官方规约禁止无偿配发音声素材）', { skip: SKIP_NO_PS7 }, () => {
   if (!existsSync(BUILDER)) return;
   const dest = buildRelease(['-KeepAllVoices']);
   const leaked = findBannedAudio(dest, 'mochiko');
@@ -123,7 +129,7 @@ test('P5: mochiko 不进发布包（官方规约禁止无偿配发音声素材�
 });
 
 // ── P6: Mixkit mp3 不得重新出现（许可禁止再分发素材本身）─────────────────
-test('P6: 发布包不含任何 .mp3（Mixkit 已移除，且禁止再分发）', () => {
+test('P6: 发布包不含任何 .mp3（Mixkit 已移除，且禁止再分发）', { skip: SKIP_NO_PS7 }, () => {
   if (!existsSync(BUILDER)) return;
   const dest = buildRelease(['-KeepAllVoices']);
   const mp3 = findFiles(dest, (n) => n.toLowerCase().endsWith('.mp3'));
@@ -133,12 +139,12 @@ test('P6: 发布包不含任何 .mp3（Mixkit 已移除，且禁止再分发）'
 });
 
 // ── P7: npm files 白名单必须包含第三方声明 ──────────────────────────────
-test('P7: 发布包 package.json 的 files 含 THIRD-PARTY-NOTICES.md', async () => {
+test('P7: 发布包 package.json 的 files 含 THIRD-PARTY-NOTICES.md', { skip: SKIP_NO_PS7 }, async () => {
   if (!existsSync(BUILDER)) return;
   const dest = buildRelease([]);
   const pkgPath = join(dest, 'package.json');
   if (!existsSync(pkgPath)) return;
-  const pkg = JSON.parse(execFileSync('powershell.exe', [
+  const pkg = JSON.parse(execFileSync(TOOLING_PS, [
     '-NoProfile', '-Command',
     `Get-Content -LiteralPath '${pkgPath.replace(/'/g, "''")}' -Raw`,
   ], { encoding: 'utf8' }));
@@ -148,7 +154,7 @@ test('P7: 发布包 package.json 的 files 含 THIRD-PARTY-NOTICES.md', async ()
     + '这正是 2026-10-18 外部审阅发现的问题');
 });
 // ── P8: kasukabe-tsumugi 必须阻断（规约禁止「二次配布」）────────────────
-test('P8: kasukabe-tsumugi 不进发布包（官方规约禁止二次配布）', () => {
+test('P8: kasukabe-tsumugi 不进发布包（官方规约禁止二次配布）', { skip: SKIP_NO_PS7 }, () => {
   if (!existsSync(BUILDER)) return;
   const dest = buildRelease(['-KeepAllVoices']);
   const leaked = findBannedAudio(dest, 'kasukabe-tsumugi');
@@ -159,7 +165,7 @@ test('P8: kasukabe-tsumugi 不进发布包（官方规约禁止二次配布）',
 });
 
 // ── P9: yurei-chan 必须阻断（身份未确认）────────────────────────────────
-test('P9: yurei-chan 不进发布包（角色身份未确认）', () => {
+test('P9: yurei-chan 不进发布包（角色身份未确认）', { skip: SKIP_NO_PS7 }, () => {
   if (!existsSync(BUILDER)) return;
   const dest = buildRelease(['-KeepAllVoices']);
   const leaked = findBannedAudio(dest, 'yurei-chan');

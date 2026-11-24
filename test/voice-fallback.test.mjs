@@ -44,6 +44,7 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, exis
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { RUNTIME_PS } from './ps-interp.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN = join(HERE, '..');
@@ -88,7 +89,7 @@ function makeShippedVoiceRoot() {
 function runPs1(args, logDir) {
   const env = { ...process.env };
   if (logDir) env.DSH_NOTIFY_SAY_LOG_DIR = logDir;
-  const r = spawnSync('powershell',
+  const r = spawnSync(RUNTIME_PS,
     ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', PS1, ...args],
     { encoding: 'utf8', timeout: 60_000, env });
   return {

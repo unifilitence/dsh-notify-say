@@ -25,6 +25,7 @@ import { existsSync, unlinkSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { RUNTIME_PS } from './ps-interp.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GAIN_LIB = join(ROOT, 'lib', 'wav-gain.ps1');
@@ -38,7 +39,7 @@ function ps(code) {
   // 中文全变乱码并报语法错（本项目踩过）。
   writeFileSync(file, '\uFEFF' + code, 'utf8');
   try {
-    return execFileSync('powershell.exe', [
+    return execFileSync(RUNTIME_PS, [
       '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', file,
     ], { encoding: 'utf8', timeout: 120_000 });
   } finally {

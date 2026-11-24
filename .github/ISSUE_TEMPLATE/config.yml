@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 提问与交流（Discussions）
+    url: https://github.com/unifilitence/dsh-notify-say/discussions
+    about: 使用疑问、配置分享或闲聊，欢迎来 Discussions 发帖

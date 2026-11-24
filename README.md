@@ -1,11 +1,18 @@
 # dsh-notify-say
 
-给 [DeepSeek Harness](https://github.com/deepseek-ai) Desktop 用的通知插件：**任务跑完会说话**。
+[![npm version](https://img.shields.io/npm/v/dsh-notify-say?color=cb3837&label=npm)](https://www.npmjs.com/package/dsh-notify-say)
+[![npm downloads](https://img.shields.io/npm/dm/dsh-notify-say?color=blue&label=downloads)](https://www.npmjs.com/package/dsh-notify-say)
+[![CI](https://github.com/unifilitence/dsh-notify-say/actions/workflows/ci.yml/badge.svg)](https://github.com/unifilitence/dsh-notify-say/actions/workflows/ci.yml)
+[![Platform](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows)](https://github.com/unifilitence/dsh-notify-say)
+[![DSH](https://img.shields.io/badge/DSH-%3E%3D0.2.1--rc.2%20%3C0.3.0-5c6bc0)](#安装)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
+给 [DeepSeek Harness](https://github.com/deepseek-ai) Desktop 用的语音通知插件：**任务跑完会说话**。
 
 > 别的通知插件"叮"一声；这个会喊你"任务完成了"。
 > 而且**子代理还在跑的时候，它不会骗你说完成了**。
-
-只支持 **Windows**。
+>
+> *Desktop notifications for DSH Desktop (Windows) that actually speak — Windows TTS out of the box, optional VOICEVOX / Chinese voice packs, and an idle gate that waits for running subagents before saying "done".*
 
 ![设置页](docs/screenshots/settings-tts.png)
 
@@ -15,18 +22,85 @@
 
 ## 目录
 
+- [安装（30 秒上手）](#安装)
+- [快速开始](#快速开始)
 - [它解决什么问题](#它解决什么问题)
 - [特性](#特性)
-- [安装](#安装)
-- [快速开始](#快速开始)
 - [配置](#配置)
 - [语音包](#语音包)
-- [关于"跳回会话"](#关于跳回会话)
+- [关于"跳回会话"](#关于跳回会话能做到什么做不到什么)
 - [兼容性与降级](#兼容性与降级)
 - [已知限制](#已知限制)
 - [常见问题](#常见问题)
 - [开发](#开发)
 - [许可](#许可)
+
+---
+
+## 安装
+
+### 前置
+
+- **Windows**（Toast 用 WinRT，播放用 MCI，调用系统自带 Windows PowerShell 5.1，无需额外装 PS7）
+- DSH Desktop **0.2.1-rc.2 ~ 0.3.0**（`>=0.2.1-rc.2 <0.3.0`）
+  - 实测环境：`0.2.1-rc.2`、`0.2.1-rc.5`、**`0.2.2-rc.1`**（2026-11 最新）。更早版本**未测过**，所以没有声明支持
+  - 设了上界 0.3.0：DSH 若有不兼容改动，市场会拦住而不是让你装了才发现
+
+### 方式一：插件页（推荐，不用命令行）
+
+1. 打开 DSH 的 **设置 → 插件**
+2. 找到「**包名或地址**」输入框（不是上面那个搜索框 —— 那个只过滤已安装列表）
+3. 填进去：
+
+   ```
+   dsh-notify-say
+   ```
+
+4. 点「**安装**」，装完重启 DSH
+
+> 装的时候卡住或报网络错误？在同一个面板里把「**安装源**」切到「**中国大陆镜像源**」再试 —— 官方源在国内经常拉不动。
+> 填 `dsh-notify-say` 是**包名**（不是搜索词）。它也能接受 GitHub 仓库地址或本机目录路径，但包名最简单。
+
+<details>
+<summary>方式二（npm）与方式三（本地源码 link 开发）</summary>
+
+#### 方式二：npm
+
+```
+npm install dsh-notify-say
+```
+
+#### 方式三：手工 link（本地开发）
+
+把本仓库目录链接进 profile：
+
+```
+D:\Program Files (x86)\DSH\profiles\desktop\package.json
+  dependencies 里加:  "dsh-notify-say": "link:<本仓库路径>"
+  dsh.profile.bundles 里加:  "dsh-notify-say"
+```
+
+然后在该 profile 目录执行 `pnpm install`，重启 DSH。
+
+</details>
+
+---
+
+## 快速开始
+
+装好之后**什么都不用配就能用**：任务完成时会弹 Toast + 播自带音色。
+
+想做更多，进 **DSH 设置 → 通知**：
+
+| 想做的事 | 去哪 |
+|---|---|
+| 换音色 / 调音量 | 设置页「音色」「音量」 |
+| 下载更多音色（15 个可选） | 设置页「语音包」→ 点「加载列表」→ 选一个点「下载」 |
+| 只保留提示音、不要语音 | 音源改成「系统提示音」 |
+| 出错时也要语音提醒 | 「出错」开关（默认已开） |
+| 让子代理结束也提醒 | 「子代理」开关（默认关） |
+| 少响一点 | 「同会话去抖」调大 |
+| 看看有没有新版 | 高级区「版本与更新」→ 检查更新 |
 
 ---
 
@@ -54,13 +128,13 @@
 | **五类事件** | 完成 / 出错 / 被拦截 / 待批准 / 要提问，各自独立开关 |
 | **设置页 GUI** | 走官方 `Config` schema，在 DSH 设置页里直接改，**改完立即生效** |
 | **命令行** | `tools/notify-config.ps1`，适合脚本化与排查 |
-| **切回窗口时跳会话** | 通知时你不在前台 → 你切回来时自动跳到那个会话（见[下文](#关于跳回会话)） |
+| **切回窗口时跳会话** | 通知时你不在前台 → 你切回来时自动跳到那个会话（见[下文](#关于跳回会话能做到什么做不到什么)） |
 | **点哪条通知就跳哪条** | 多会话同时完成时，点不同的 Toast 会落到各自的会话（**可选开关**，见[下文](#-能做到点哪条-toast-就跳哪条v0470-起v0483-稳定)） |
 | **不装语音也能用** | 没有语音包 = Toast + 系统提示音，这是正常配置 |
 | **许可先告知** | 下载音色前弹出条款确认，写明署名要求与官方条款链接 |
 | **诊断导出** | 一键导出脱敏日志（用户名/路径已替换），方便提 Issue |
 | **日志隐私分级** | 默认只记元数据，**不记台词正文**；要详细日志需手动开 debug |
-| **检查更新** | 显示当前/最新版本，有新版时给出升级命令（**不自动更新**，见[下文](#有新版本了怎么办)） |
+| **检查更新** | 显示当前/最新版本，有新版时给出升级命令（**不自动更新**，见[下文](#常见问题)） |
 
 > **联网说明**：通知、播放、TTS **完全离线**。
 > 会联网的只有两件事：
@@ -69,71 +143,6 @@
 >
 > 不想让它检查更新？不点「检查更新」就不会主动查；已缓存的 24 小时内也不会再查。
 > 网络不可用时这两件事都会失败，但**不影响通知和语音**。
-
----
-
-## 安装
-
-### 前置
-
-- DSH Desktop **0.2.1-rc.2 ~ 0.3.0**（`>=0.2.1-rc.2 <0.3.0`）
-  - 实测环境：`0.2.1-rc.2`、`0.2.1-rc.5`、**`0.2.2-rc.1`**（2026-11 最新）。更早版本**未测过**，所以没有声明支持
-  - 设了上界 0.3.0：DSH 若有不兼容改动，市场会拦住而不是让你装了才发现
-- Windows（Toast 用 WinRT，播放用 MCI，调用 Windows PowerShell 5.1）
-
-### 方式一：插件页（推荐，不用命令行）
-
-1. 打开 DSH 的 **设置 → 插件**
-2. 找到「**包名或地址**」输入框（不是上面那个搜索框 —— 那个只过滤已安装列表）
-3. 填进去：
-
-   ```
-   dsh-notify-say
-   ```
-
-4. 点「**安装**」，装完重启 DSH
-
-> 装的时候卡住或报网络错误？在同一个面板里把「**安装源**」切到
-> 「**中国大陆镜像源**」再试 —— 官方源在国内经常拉不动。
-
-> 填 `dsh-notify-say` 是**包名**（不是搜索词）。它也能接受 GitHub 仓库地址
-> 或本机目录路径，但包名最简单。
-
-### 方式二：npm
-
-```
-npm install dsh-notify-say
-```
-
-### 方式三：手工 link（本地开发）
-
-把本仓库目录链接进 profile：
-
-```
-D:\Program Files (x86)\DSH\profiles\desktop\package.json
-  dependencies 里加:  "dsh-notify-say": "link:<本仓库路径>"
-  dsh.profile.bundles 里加:  "dsh-notify-say"
-```
-
-然后在该 profile 目录执行 `pnpm install`，重启 DSH。
-
----
-
-## 快速开始
-
-装好之后**什么都不用配就能用**：任务完成时会弹 Toast + 播自带音色。
-
-想做更多，进 **DSH 设置 → 通知**：
-
-| 想做的事 | 去哪 |
-|---|---|
-| 换音色 / 调音量 | 设置页「音色」「音量」 |
-| 下载更多音色（15 个可选） | 设置页「语音包」→ 点「加载列表」→ 选一个点「下载」 |
-| 只保留提示音、不要语音 | 音源改成「系统提示音」 |
-| 出错时也要语音提醒 | 「出错」开关（默认已开） |
-| 让子代理结束也提醒 | 「子代理」开关（默认关） |
-| 少响一点 | 「同会话去抖」调大 |
-| 看看有没有新版 | 高级区「版本与更新」→ 检查更新 |
 
 ---
 
@@ -167,7 +176,8 @@ D:\Program Files (x86)\DSH\profiles\desktop\package.json
 音色自动归到「中文」（依据是音色名以 `zh-` 开头）。这条只在你的配置里**没有**语音
 语言这个键时生效 —— 自己显式选过的语言永远不会被覆盖。
 
-### 命令行
+<details>
+<summary>命令行配置（<code>tools/notify-config.ps1</code>，适合脚本化与排查）</summary>
 
 ```powershell
 cd <插件目录>\tools
@@ -182,6 +192,13 @@ cd <插件目录>\tools
 ```
 
 改完**立即生效**，不需要重启 DSH。
+
+**PowerShell 版本**：这些命令用 Windows 自带的 PowerShell 5.1 就行，**不需要装
+PowerShell 7**。如果你装了 7，用 `pwsh` 跑也一样。插件的所有脚本都按 5.1 兼容维护 ——
+本插件的运行本来就依赖 5.1（Toast 通知走 WinRT，只有 5.1 有），所以不会出现
+「装了插件还得额外装个 PowerShell 7」的情况。
+
+</details>
 
 ---
 
@@ -269,8 +286,7 @@ sounds/voice-lines/fail/<key>~1.wav       出错
 ## 关于"跳回会话"：能做到什么，做不到什么
 
 这一节把边界写清楚 —— 有些事是**宿主没给接口**，不是本插件偷懒。
-结论先给：**能在你切回来时跳到「你离开期间最早完成」的那个会话；
-不能做到「点哪条通知就跳哪条」。**
+结论先给：**默认能在你切回窗口时跳到「离开期间最早完成」的会话；打开显式开关后，也能做到「点哪条 Toast 就跳哪条」。**
 
 ### ✅ 能做到：切回窗口时跳到那个会话
 
@@ -553,6 +569,9 @@ Windows 自定义协议只能在插件**被加载时**注册/清理，而 DSH �
 
 ## 开发
 
+<details>
+<summary>展开查看：跑测试（694 条）、测试分层、CI 与发版流程</summary>
+
 ### 跑测试
 
 ```powershell
@@ -562,7 +581,7 @@ npm run test:route    # 需要 --import loader 的接线测试
 npm run test:audio-wire
 ```
 
-**688 条测试通过**（`test:all` 两段实测：主套件 634 = 598 passed + 36 skipped 需真实宿主；
+**694 条测试通过**（`test:all` 两段实测：主套件 640 = 604 passed + 36 skipped 需真实宿主；
 route 注入段 54 = 53 passed + 1 skipped）。
 绝大多数是纯逻辑测试，克隆仓库后 `npm test` 即可跑。
 
@@ -615,6 +634,8 @@ npm test
 
 `CHANGELOG.md` 由 `release-build.ps1` **自动生成**（从开发提交提取标题，
 过滤掉内部资料与 hash），随包发布。**请勿手工编辑**。
+
+</details>
 
 ---
 

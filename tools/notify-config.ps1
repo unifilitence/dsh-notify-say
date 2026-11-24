@@ -1,4 +1,9 @@
-﻿<#
+﻿#Requires -Version 5.1
+# 最低 PowerShell 5.1 —— 本文件随 npm 包发给用户、README 教用户直接运行，Windows 出厂只有 5.1。
+# 它带 UTF-8 BOM 且不含 PS7 独有语法（ADR-0015 L3 担心的「5.1 误读无 BOM 中文」不成立），
+# 5.1 下 JSON 往返实测无损（20/20 键含中文）。不要改成 7.0 —— 见踩坑 #495。
+
+<#
 .SYNOPSIS
   dsh-notify-say 配置命令行（v0.4.0 的「第 4 层」运行时覆盖）。
 
@@ -104,7 +109,7 @@ $ErrorActionPreference = 'Stop'
 
 # ── 路径解析 ────────────────────────────────────────────────────────────────
 # 本脚本位于 <plugin>/tools/，插件根 = 上一级。
-# ⚠️ 不能用 $MyInvocation.MyCommand.Path —— 经 `powershell -File` 启动时它可能为空，
+# ⚠️ 不能用 $MyInvocation.MyCommand.Path —— 经 `pwsh -File` 启动时它可能为空，
 # 导致 $pluginRoot 变成 $null、进而 Join-Path 拼出错误路径（实测踩到）。
 # 用 $PSScriptRoot（-File 与点源两种方式都可靠）+ $MyInvocation.MyCommand.Definition 兜底。
 $scriptPath = $PSScriptRoot

@@ -6,6 +6,7 @@
 ## v0.5.7 — 2026-11-23
 
 - fix(notify-say): #5 PTC/code-mode 下提问提醒永不触发（v0.5.7）
+- fix(release): 发布包的 scripts 改为继承源，别让 L8 卡死发版
 
 ## v0.5.6 — 2026-11-23
 
@@ -346,5 +347,8 @@
 
 ## 未发布
 
-- fix(release): 发布包的 scripts 改为继承源，别让 L8 卡死发版
+- feat(ps7): 统一到 PowerShell 7 —— 四层防呆 + C7 静态闸（ADR-0015）
+- fix(ps7): 运行时脚本不再带 #Requires 7.0，测试按两解释器分工（踩坑 #494）
+- feat(ps7): 用户 CLI notify-config.ps1 退回 5.1 兼容 —— 它随 npm 包发给用户，而 Windows 出厂只有 5.1
+- fix(release): release.ps1 用 pwsh 启动 release-build.ps1，否则 0.5.8 发版第 3 步必挂
 

@@ -32,6 +32,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { RUNTIME_PS } from './ps-interp.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PLUGIN = join(HERE, '..');
@@ -43,7 +44,7 @@ const LIB = join(PLUGIN, 'lib', 'index.js');
 
 /** 跑 ps1 -Preview，返回 stdout / stderr / exit code。用 spawnSync（见文件头踩坑③）。 */
 function runPs1(args) {
-  const r = spawnSync('powershell',
+  const r = spawnSync(RUNTIME_PS,
     ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', PS1, ...args],
     { encoding: 'utf8', timeout: 60_000 });
   return {

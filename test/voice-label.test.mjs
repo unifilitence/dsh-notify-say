@@ -25,6 +25,7 @@ import { readFileSync, existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync
 import { tmpdir } from 'node:os';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { RUNTIME_PS } from './ps-interp.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CLIENT = readFileSync(join(ROOT, 'lib', 'client.js'), 'utf8');
@@ -83,7 +84,7 @@ const PS1 = join(ROOT, 'dsh-notify.ps1');
 // 惰性导入后，只有真正调 runPs1 时才解析，而 route 段里 L2b 是 skip 的。
 async function runPs1(args) {
   const { spawnSync } = await import('node:child_process');
-  const r = spawnSync('powershell',
+  const r = spawnSync(RUNTIME_PS,
     ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', PS1, ...args],
     { encoding: 'utf8', timeout: 60_000 });
   return {

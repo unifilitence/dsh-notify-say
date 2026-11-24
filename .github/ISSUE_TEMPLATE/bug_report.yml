@@ -1,0 +1,61 @@
+name: Bug 反馈
+description: 没声音、弹窗异常、跳转失效、设置保存失败或兼容性问题
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！本插件内置了「脱敏诊断日志导出」（用户名与本机路径会自动替换），附带上它能大幅加快定位速度。
+        入口：**DSH 设置 → 通知 → 高级 → 诊断导出**。
+
+  - type: input
+    id: plugin_version
+    attributes:
+      label: 插件版本
+      description: 可在 DSH 设置 → 插件 或高级区「版本与更新」查看
+      placeholder: 例如 0.5.7
+    validations:
+      required: true
+
+  - type: input
+    id: dsh_version
+    attributes:
+      label: DSH Desktop 版本
+      placeholder: 例如 0.2.2-rc.1
+    validations:
+      required: true
+
+  - type: dropdown
+    id: audio_source
+    attributes:
+      label: 当前声音来源
+      options:
+        - 系统语音合成（Windows TTS）
+        - 语音包（VOICEVOX / EmotiVoice）
+        - 系统提示音
+        - 自定义音频
+        - 不发声 / 不确定
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述与复现步骤
+      description: 你期待发生什么，实际发生了什么？
+      placeholder: |
+        1. 我在设置页选择了……
+        2. 任务完成后……
+        3. 实际表现是……
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 脱敏诊断日志（强烈建议附带）
+      description: 从「DSH 设置 → 通知 → 高级 → 诊断导出」导出的文本，直接粘贴在这里即可
+      render: text
+    validations:
+      required: false

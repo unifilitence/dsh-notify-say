@@ -1,4 +1,7 @@
-﻿# 批量抓取音色条款快照
+﻿#Requires -Version 7.0
+# ADR-0015 L3: needs PowerShell 7 (Windows PowerShell 5.1 mis-reads BOM-less UTF-8: pitfalls #1/#480/#482)
+
+# 批量抓取音色条款快照
 #
 # 用途：把各音色官方规约的**正文**存成本地快照，作为审核证据。
 #

@@ -3,6 +3,13 @@
 > 本文件由 `tools/release-build.ps1` 从开发提交自动生成，**请勿手工编辑**。
 > 只列面向使用者的变更（新增功能与修复），不含内部维护提交。
 
+## v0.5.8 — 2026-11-24
+
+- feat(ps7): 统一到 PowerShell 7 —— 四层防呆 + C7 静态闸（ADR-0015）
+- fix(ps7): 运行时脚本不再带 #Requires 7.0，测试按两解释器分工（踩坑 #494）
+- feat(ps7): 用户 CLI notify-config.ps1 退回 5.1 兼容 —— 它随 npm 包发给用户，而 Windows 出厂只有 5.1
+- fix(release): release.ps1 用 pwsh 启动 release-build.ps1，否则 0.5.8 发版第 3 步必挂
+
 ## v0.5.7 — 2026-11-23
 
 - fix(notify-say): #5 PTC/code-mode 下提问提醒永不触发（v0.5.7）
@@ -347,8 +354,6 @@
 
 ## 未发布
 
-- feat(ps7): 统一到 PowerShell 7 —— 四层防呆 + C7 静态闸（ADR-0015）
-- fix(ps7): 运行时脚本不再带 #Requires 7.0，测试按两解释器分工（踩坑 #494）
-- feat(ps7): 用户 CLI notify-config.ps1 退回 5.1 兼容 —— 它随 npm 包发给用户，而 Windows 出厂只有 5.1
-- fix(release): release.ps1 用 pwsh 启动 release-build.ps1，否则 0.5.8 发版第 3 步必挂
+- fix(ci): Node 20 静态 import globSync 导致 CI 连红四次，加 D20 判据锁住
+- fix(toast): 收录 PR #4 的发通知身份探测，并修其致命顺序 bug
 

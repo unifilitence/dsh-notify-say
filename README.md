@@ -581,7 +581,7 @@ npm run test:route    # 需要 --import loader 的接线测试
 npm run test:audio-wire
 ```
 
-**694 条测试通过**（`test:all` 两段实测：主套件 640 = 604 passed + 36 skipped 需真实宿主；
+**705 条测试通过**（`test:all` 两段实测：主套件 651 = 615 passed + 36 skipped 需真实宿主；
 route 注入段 54 = 53 passed + 1 skipped）。
 绝大多数是纯逻辑测试，克隆仓库后 `npm test` 即可跑。
 

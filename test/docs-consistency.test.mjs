@@ -18,13 +18,38 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync, readdirSync, statSync, globSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PKG = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+
+/**
+ * 惰性取 fs.globSync —— 它是 Node 22.0 才有的导出。
+ *
+ * ⚠️ 不能写成静态 import：Node 20 上整个模块会在求值前加载失败
+ * （`SyntaxError: The requested module 'node:fs' does not provide an export
+ * named 'globSync'`），外层 try/catch 一条断言都拦不住 —— 这正是 0.5.2 起
+ * GitHub Actions「单元测试（Node 20）」连红四次的原因（0.5.2 / 0.5.3 /
+ * 0.5.7 / 0.5.8 全中；本机 Node 24 看不到，所以一直没被发现）。
+ *
+ * 与 test/reload-verification.test.mjs 对 registerHooks 的处理同一套做法：
+ * 运行时按需取，取不到就落保守分支。
+ */
+let _globSync;
+function getGlobSync() {
+  if (_globSync !== undefined) return _globSync;
+  try {
+    const fsMod = createRequire(import.meta.url)('node:fs');
+    _globSync = typeof fsMod.globSync === 'function' ? fsMod.globSync : null;
+  } catch {
+    _globSync = null;
+  }
+  return _globSync;
+}
 
 /** 磁盘上真实存在的音色 key（从 sounds/voice-lines 推）。 */
 function realVoiceKeys() {
@@ -734,6 +759,82 @@ test('D13: README 的测试条数与实际一致', () => {
     `README 声称 ${claimed} 条测试，超出合理范围 —— 数字可能过时`);
 });
 
+// ── D20: 静态 import 里不许出现 engines.node 不支持的 API ─────────────────
+//
+// 为什么必须有这条：0.5.2 → 0.5.3 → 0.5.7 → 0.5.8 四次发布，GitHub Actions
+// 的「单元测试（Node 20）」**每次都红**，公开仓库的 CI 徽章一直是 failing。
+// 根因只有一个：`docs-consistency.test.mjs` 静态 import 了 `globSync`
+// —— 它是 Node 22.0 才有的导出。Node 20 上**整个模块在求值前就加载失败**，
+// 外层 try/catch 一条断言都拦不住，所以格外难在本地发现（本机 Node 24 全绿）。
+//
+// 这类问题的共同形状是「能跑通的机器上看不出来」：静态 import 在模块求值
+// **之前**解析，所以任何"运行时降级"都救不了它。判据只能落在**源码文本**上。
+//
+// 同源的先例：`reload-verification.test.mjs` 为 `registerHooks`（22.15+）
+// 写过一次同样的坑（0.4.26~0.4.28 修了三轮），但那次只修了用法，没建判据，
+// 于是同一个坑换了个 API 又踩一遍 —— 这条判据就是那次缺的机制。
+test('D20: 静态 import 不得引用 engines.node 范围内的 Node 没有的导出', () => {
+  // 只登记**本仓库真用到过 / 极易误用**的条目，不做全量 API 考古。
+  // version 用来说明"为什么它不够老"，编译报错时人能看懂。
+  const TOO_NEW = [
+    { mod: 'fs', name: 'globSync', version: '22.0.0' },
+    { mod: 'fs/promises', name: 'glob', version: '22.0.0' },
+    { mod: 'module', name: 'registerHooks', version: '22.15.0' },
+    { mod: 'module', name: 'stripTypeScriptTypes', version: '22.13.0' },
+    { mod: 'util', name: 'parseEnv', version: '20.12.0' },
+  ];
+  // engines 说支持的最低版本（写死在这里是刻意的：下限变了就得有人来改判据）
+  const MIN_NODE = [20, 0, 0];
+
+  const isTooNew = (v) => {
+    const got = v.split('.').map(Number);
+    for (let i = 0; i < 3; i++) {
+      if ((got[i] || 0) > MIN_NODE[i]) return true;
+      if ((got[i] || 0) < MIN_NODE[i]) return false;
+    }
+    return false;
+  };
+  const banned = TOO_NEW.filter((e) => isTooNew(e.version));
+
+  const files = [];
+  const walk = (dir) => {
+    for (const e of readdirSync(join(ROOT, dir), { withFileTypes: true })) {
+      if (e.name === 'node_modules' || e.name.startsWith('.')) continue;
+      const rel = dir + '/' + e.name;
+      if (e.isDirectory()) walk(rel);
+      else if (/\.(mjs|js)$/.test(e.name)) files.push(rel);
+    }
+  };
+  for (const d of ['test', 'lib']) {
+    if (existsSync(join(ROOT, d))) walk(d);
+  }
+  assert.ok(files.length > 20, `扫描到的源码文件太少（${files.length}），walk 可能坏了`);
+
+  // 只认**静态** import：`import { x } from 'node:fs'`。
+  // 动态 `createRequire(...)('node:fs')` 与 `await import()` 是有意为之的降级，
+  // 不在判据范围内（它们的可用性由用到的地方自己的 skip 分支兜住）。
+  const STATIC_IMPORT = /^\s*import\s*\{([^}]*)\}\s*from\s*['"]node:([^'"]+)['"]/gm;
+  const offenders = [];
+  for (const rel of files) {
+    const src = readFileSync(join(ROOT, rel), 'utf8');
+    for (const m of src.matchAll(STATIC_IMPORT)) {
+      const names = m[1].split(',').map((x) => x.trim().split(/\s+as\s+/)[0].trim()).filter(Boolean);
+      for (const b of banned) {
+        if (m[2] !== b.mod) continue;
+        if (names.includes(b.name)) {
+          offenders.push(`${rel}: 静态 import {${b.name}} from 'node:${b.mod}'`
+            + `（Node ${b.version}+ 才有，但 engines 说 ${MIN_NODE.join('.')} 起就支持）`);
+        }
+      }
+    }
+  }
+  assert.deepEqual(offenders, [],
+    '这些静态 import 会让 Node 20/22.0 上的模块直接加载失败（不是断言失败，是整文件不跑）：\n  '
+    + offenders.join('\n  ')
+    + '\n改法：用 createRequire(import.meta.url)(...) 或 await import() 运行时按需取，'
+    + '取不到就走跳过/保守分支。');
+});
+
 // ── D14: README 必须提到音色下载的许可告知 ──────────────────────────────
 test('D14: README 说明下载前会展示署名与条款', () => {
   // 这是合规要求：用户得知道"用这些语音做的内容要署名"。
@@ -1413,7 +1514,15 @@ function dirWhitelistProblems(rb, tables = {}) {
       //    用 fs.globSync 判它到底能匹配到东西；匹配不到才算真错。
       if (/[*?[\]]/.test(n)) {
         let matched = [];
-        try { matched = globSync(n, { cwd: ROOT }); } catch { matched = []; }
+        const gs = getGlobSync();
+        if (gs) {
+          try { matched = gs(n, { cwd: ROOT }); } catch { matched = []; }
+        } else {
+          // Node 20 没有 globSync，无法真的判它能不能匹配到东西。
+          // 宁可放过（不报警）也不能凭空报 B-不存在 —— 那会把一个跨版本兼容
+          // 问题伪装成"files 白名单写错了"。
+          matched = [n];
+        }
         if (matched.length > 0) continue;
         add(REASON.B_MISSING, `files 白名单里的通配 ${n} 在源目录匹配不到任何文件`
           + ' → npm pack 不会因此报错，但这一条等于什么也没声明');
@@ -2078,11 +2187,17 @@ test('D19i: files 条目的格式判据必须与 npm 实测一致', { skip: SKIP
     assert.ok(blk.includes("    'lib',\n"), 'files 数组内未命中 lib 条目');
     return rb.slice(0, open) + blk.replace("    'lib',\n", `    'lib',\n    '${entry}',\n`) + rb.slice(close);
   };
-  assert.deepEqual(dirWhitelistProblems(appendInFiles('*.md')).map((p) => p.code), [],
-    "files 里的 '*.md' 能匹配到文件，npm 正常打包，不该报错");
-  assert.ok(dirWhitelistProblems(appendInFiles('*.nonexistent-ext')).map((p) => p.code)
-    .includes(REASON.B_MISSING),
-  '匹配不到任何文件的通配应当报 B-不存在（等于这一条什么也没声明）');
+  // ③ 的两条断言要靠 fs.globSync 才能判"这个通配到底匹配不匹配得到东西"。
+  //    Node 20 没有这个 API（见文件头 getGlobSync 的说明），此时无法验证，
+  //    只能显式跳过 —— 让它在 Node 20 上"看起来绿"是误报，让它红是假红，
+  //    两者都比"写清楚这里没验"更糟。
+  if (getGlobSync()) {
+    assert.deepEqual(dirWhitelistProblems(appendInFiles('*.md')).map((p) => p.code), [],
+      "files 里的 '*.md' 能匹配到文件，npm 正常打包，不该报错");
+    assert.ok(dirWhitelistProblems(appendInFiles('*.nonexistent-ext')).map((p) => p.code)
+      .includes(REASON.B_MISSING),
+    '匹配不到任何文件的通配应当报 B-不存在（等于这一条什么也没声明）');
+  }
 });
 
 // ── D19j: 点号段 / 越界段（第五轮只读复核报的两个 P0）─────────────────────

@@ -88,7 +88,7 @@ D:\Program Files (x86)\DSH\profiles\desktop\package.json
 
 ## 快速开始
 
-装好之后**什么都不用配就能用**：任务完成时会弹 Toast + 播自带音色。
+装好之后**什么都不用配就能用**：任务完成时会弹 Toast + 系统语音播报（Windows TTS，零下载开箱即用；想换日语/中文语音包可在设置页「声音来源」里切换）。
 
 想做更多，进 **DSH 设置 → 通知**：
 
@@ -570,7 +570,7 @@ Windows 自定义协议只能在插件**被加载时**注册/清理，而 DSH �
 ## 开发
 
 <details>
-<summary>展开查看：跑测试（694 条）、测试分层、CI 与发版流程</summary>
+<summary>展开查看：跑测试（705 条）、测试分层、CI 与发版流程</summary>
 
 ### 跑测试
 

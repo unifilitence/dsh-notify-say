@@ -3,6 +3,11 @@
 > 本文件由 `tools/release-build.ps1` 从开发提交自动生成，**请勿手工编辑**。
 > 只列面向使用者的变更（新增功能与修复），不含内部维护提交。
 
+## v0.5.9 — 2026-11-26
+
+- fix(ci): Node 20 静态 import globSync 导致 CI 连红四次，加 D20 判据锁住
+- fix(toast): 收录 PR #4 的发通知身份探测，并修其致命顺序 bug
+
 ## v0.5.8 — 2026-11-24
 
 - feat(ps7): 统一到 PowerShell 7 —— 四层防呆 + C7 静态闸（ADR-0015）
@@ -351,9 +356,4 @@
 
 - feat(notify): 空闲门——子代理/后台任务在跑时不再误报「任务完成」
 - feat(notify): v0.3.1 失败语音——error 回合播日语道歉语音
-
-## 未发布
-
-- fix(ci): Node 20 静态 import globSync 导致 CI 连红四次，加 D20 判据锁住
-- fix(toast): 收录 PR #4 的发通知身份探测，并修其致命顺序 bug
 

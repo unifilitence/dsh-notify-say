@@ -721,3 +721,127 @@ test('C27: 设置页必须提供「点击通知跳到对应会话」开关', () 
     '设置页注释里还留着"点通知才跳做不到"的旧结论（未标注更正）');
 });
 
+// ══════════════════════════════════════════════════════════════════════════
+// v0.6.1 启动守卫（C28–C32）
+//
+// 背景：DSH 把多个插件的 client 打进同一个 classic script batch。同批里任一
+// 包解析失败或抛错，排在后面的 `__ModuleLoader__.load()` 全都不会执行，随后
+// web-boot 把「没有 fiber」的每个 entry 都记成 import failed 并弹致命框
+// （2026-11-27 18:45 实测：dsh-light-guard 有一行 TS 残留，弹窗却点名我们）。
+//
+// 这些用例钉住三件事：①我们的产物自己必须能当 classic script 解析；
+// ②顶层注册必须容错且**不能**用全局布尔锁（否则热重载失效）；
+// ③真错误仍要被抛出（异步），不能被静默吞掉。
+// ══════════════════════════════════════════════════════════════════════════
+
+// ── C28: 产物必须能被 classic script 解析 ──────────────────────────────────
+test('C28: client.js 能被 new Function 解析（classic script 门）', () => {
+  const src = readClient();
+  // 这一条就是 18:45 那次事故的镜像：同批的别的插件在这里炸了，
+  // 我们被连坐。我们自己的产物必须永远过这道门。
+  assert.doesNotThrow(() => { /* eslint-disable-next-line no-new-func */
+    new Function(src);
+  }, 'client.js 必须能被当作 classic script 解析（出现 TS 语法/顶层 await 就会整批作废）');
+});
+
+// ── C29: 顶层注册必须包在 try/catch 里，且不用全局布尔锁 ────────────────────
+test('C29: 顶层 load() 被 try/catch 包住，duplicate 匹配宽松，且无全局布尔锁', () => {
+  const src = readClient();
+
+  // ① load 调用必须在 try 块里
+  assert.match(src, /try\s*\{[\s\S]{0,400}?window\.__ModuleLoader__\.load\s*\(\s*\{/,
+    'window.__ModuleLoader__.load(...) 必须被 try 包住 —— 否则重复注册会整批拖垮');
+
+  // ② catch 里必须按文案识别「重复注册」，且文案匹配要宽松
+  //    （宿主改措辞也不该让守卫失效；对应 DSH ClientModuleSystem.register 的报错）
+  assert.match(src, /\}\s*catch\s*\(\s*err\s*\)\s*\{/,
+    '顶层必须有 catch (err) 分支');
+  assert.match(src, /\/duplicate\|already\/i/,
+    'duplicate 判定必须用宽松正则 /duplicate|already/i，不要精确匹配宿主文案');
+
+  // ③ 反面断言：不许用全局布尔锁把二次执行直接挡掉 —— 那会让真正的热重载失效
+  assert.doesNotMatch(src, /if\s*\(\s*(?:window\.)?__?[A-Za-z]*[Bb]ooted\s*\)\s*return/,
+    '不得用全局 booted 布尔锁短路（会让热重载后 bundle 拒绝重新注册）');
+  assert.doesNotMatch(src, /^\s*(?:var|let|const)\s+booted\s*=/m,
+    '不得引入模块级 booted 标志');
+
+  // ④ 真错误不能被吞：必须异步重抛（microtask 优先，setTimeout 兜底）
+  assert.match(src, /queueMicrotask\s*\(\s*function\s*\(\s*\)\s*\{\s*throw\s+err/,
+    '非 duplicate 错误必须用 queueMicrotask 重新抛出，让 console 看得见');
+  assert.match(src, /setTimeout\s*\(\s*function\s*\(\s*\)\s*\{\s*throw\s+err\s*\}/,
+    'queueMicrotask 不可用时要有 setTimeout 兜底');
+});
+
+// ── C30: 重复执行时 duplicate 被吞掉（真实执行，不只是文本断言）─────────────
+test('C30: 同 realm 内重复执行两次不抛错（duplicate 被吞）', () => {
+  const src = readClient();
+  let calls = 0;
+  const fakeWindow = {
+    __ModuleLoader__: {
+      load() {
+        calls += 1;
+        if (calls > 1) {
+          throw new Error('client-modules: duplicate factory registration for "dsh-notify-say" '
+            + '(bundle executed twice without invalidate?)');
+        }
+      },
+    },
+    addEventListener() {},
+    removeEventListener() {},
+  };
+  // eslint-disable-next-line no-new-func
+  const run = new Function('window', 'document', src);
+  assert.doesNotThrow(() => run(fakeWindow, undefined), '第一次执行应成功');
+  assert.doesNotThrow(() => run(fakeWindow, undefined),
+    '第二次执行撞 duplicate 时必须静默 —— 否则会打断同批其他插件的注册');
+  assert.equal(calls, 2, '两次都应真的调用到 load（守卫是 catch，不是提前 return）');
+});
+
+// ── C31: 非 duplicate 错误改为异步抛出（不阻断同批邻居）────────────────────
+test('C31: 非 duplicate 的启动错误异步重抛，不同步抛出', () => {
+  const src = readClient();
+  const fakeWindow = {
+    __ModuleLoader__: {
+      load() { throw new Error('boom: 这是真错误，不能被吞'); },
+    },
+    addEventListener() {},
+    removeEventListener() {},
+  };
+  const queued = [];
+  // eslint-disable-next-line no-new-func
+  const run = new Function('window', 'document', 'queueMicrotask', src);
+
+  assert.doesNotThrow(() => run(fakeWindow, undefined, (fn) => { queued.push(fn); }),
+    '真错误也不能同步抛 —— 同步抛会打断 batch 里后面插件的注册');
+  assert.equal(queued.length, 1, '真错误必须被排队重抛（不能静默吞掉）');
+  assert.throws(() => queued[0](), /boom: 这是真错误/,
+    '排队的那次执行必须真的抛出原错误，让 console 留痕');
+});
+
+// ── C32: apply 出口兜底（任何未预料异常都不该让 fiber failed）───────────────
+test('C32: apply 有出口兜底，主体在 applyInner 里', () => {
+  const src = readClient();
+
+  assert.match(src, /function applyInner\s*\(\s*ctx\s*\)\s*\{/,
+    'apply 主体应拆到 applyInner，外层只负责兜底');
+  assert.match(src, /function apply\s*\(\s*ctx\s*\)\s*\{[\s\S]{0,600}?return applyInner\s*\(\s*ctx\s*\)/,
+    '外层 apply 必须把调用转发给 applyInner');
+  assert.match(src, /catch\s*\(\s*e\s*\)\s*\{[\s\S]{0,300}?\[apply\] failed/,
+    '兜底必须记一条 [apply] failed 日志（不掩盖问题）');
+  assert.match(src, /return function\s*\(\s*\)\s*\{\s*(?:\/\*[\s\S]{0,80}?\*\/)?\s*\}/,
+    '兜底路径必须返回空 disposer，cordis 才不会认为 fiber 失败');
+
+  // 运行时：apply 仍可正常调用（兜底不该影响正常路径）
+  let captured = null;
+  const fakeWindow = {
+    __ModuleLoader__: { load(def) { captured = def; } },
+    addEventListener() {},
+    removeEventListener() {},
+  };
+  // eslint-disable-next-line no-new-func
+  new Function('window', 'document', src)(fakeWindow, undefined);
+  const mod = captured.factory(requireWithReact(fakeReact()));
+  const dispose = mod.apply({ get() { return undefined; } });
+  assert.equal(typeof dispose, 'function', '正常路径仍应返回可调用的 disposer');
+  assert.doesNotThrow(() => dispose());
+});

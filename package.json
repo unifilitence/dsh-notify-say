@@ -1,6 +1,6 @@
 {
   "name": "dsh-notify-say",
-  "version": "0.5.10",
+  "version": "0.5.11",
   "description": "Desktop notifications for DSH Desktop that actually speak: Windows TTS out of the box (zero download), VOICEVOX voice packs optional, a selectable system-sound fallback, and an idle gate that waits for running subagents before saying the turn is done. Includes a settings-page GUI (sound source, per-event overrides, jump-back-to-session, cooldowns) and a self hot-reload for development.",
   "license": "MIT",
   "type": "module",

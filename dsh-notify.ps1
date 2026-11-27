@@ -94,7 +94,22 @@ param(
   #
   # 只对 16-bit PCM wav 生效；mp3/m4a/flac/ogg 原样播放。
   [ValidateRange(1.0, 4.0)]
-  [double]$Gain = 1.0
+  [double]$Gain = 1.0,
+  # v0.6.0：**只选音、不播放**。
+  #
+  # 为什么需要：WebAudio 通道要由渲染进程出声（它有独立的混音器身份，
+  # 不会被「Windows PowerShell 音量被拉到 1%」这种全机性设置拖死），
+  # 但"选哪条语音、要不要加增益"这套规则只应该有一份 —— 就在本脚本里。
+  # 所以让本脚本跑完选音+增益，把**最终要播的文件路径**打出来就退出，
+  # Node 侧读字节喂给前端；绝不在这里重新实现一遍选音逻辑（那必然漂移）。
+  #
+  # 输出协议（一行，便于 Node 侧解析）：
+  #   RESOLVE=<绝对路径>     选到了音频文件（可能是增益后的临时 wav）
+  #   RESOLVE=               没有文件（chime / 静音 / 用户自定义过大被挡等）
+  #   RESOLVE_KIND=chime     没有文件时，说明"该走蜂鸣/系统音"而不是"没声音"
+  #
+  # ⚠️ 增益产生的临时 wav **不删除**：调用方读完字节自己删（见 Node 侧）。
+  [switch]$Resolve
 )
 
 $ErrorActionPreference = 'Continue'
@@ -509,7 +524,7 @@ function Get-ToastAppId {
   $detailXml = ""
   if ($Detail -ne "") { $detailXml = "<text>" + (& $xmlEscape $Detail) + "</text>" }
 
-if ($SoundOnly -or $Preview) {
+if ($SoundOnly -or $Preview -or $Resolve) {
   # 视觉另有消费方（或试听）：只播声音，不弹 Toast
   $shown = $true
 } else {
@@ -585,8 +600,15 @@ function global:Play-Chime {
 }
 
 function global:Play-VoiceLine {
-  if ($Kind -eq 'chime') { Play-Chime; return }
-  if (-not $script:playFile) { Play-Chime; return }
+  # -Resolve：不播，只把"最终会播什么"报给调用方（v0.6.0）。
+  if ($Kind -eq 'chime') {
+    if ($Resolve) { Write-Output 'RESOLVE='; Write-Output 'RESOLVE_KIND=chime' } else { Play-Chime }
+    return
+  }
+  if (-not $script:playFile) {
+    if ($Resolve) { Write-Output 'RESOLVE='; Write-Output 'RESOLVE_KIND=chime' } else { Play-Chime }
+    return
+  }
 
   # ── 时长/体积闸（v0.4.8）──────────────────────────────────────────────────
   #
@@ -637,14 +659,17 @@ function global:Play-VoiceLine {
     }
   }
 
-  if ($Kind -eq 'chime' -or -not $script:playFile) { Play-Chime; return }
+  if ($Kind -eq 'chime' -or -not $script:playFile) {
+    if ($Resolve) { Write-Output 'RESOLVE='; Write-Output 'RESOLVE_KIND=chime' } else { Play-Chime }
+    return
+  }
 
   # ⚠️ 音量 0 = 完全静音（2026-10-17 修）。两个实测坑：
   #   1. MCI 的 `setaudio volume to 0` 并非静音（0 常被当作未设/最大），
   #      于是"传 -Volume 0 想静音"的自动化测试照样出声；
   #   2. 一旦播放在 catch 里失败，会回落到 Play-Chime —— 更响。
   # 所以在**打开文件之前**就返回，且不回落 chime。
-  if ($script:notifyVol -eq 0) { $script:lastSound = ''; return }
+  if ($script:notifyVol -eq 0 -and -not $Resolve) { $script:lastSound = ''; return }
   $fx = Get-Item -LiteralPath $script:playFile
   $script:lastSound = $fx.Name
   if ($fx.FullName -match '"') { $script:lastSound = ''; Play-Chime; return }
@@ -683,6 +708,17 @@ function global:Play-VoiceLine {
     $gainTmp = ''
   }
 
+  # ── -Resolve：选音 + 增益都做完了，把结果报出去就返回（v0.6.0）───────
+  #
+  # 增益临时文件**不删** —— 调用方（Node 侧）要读它的字节，
+  # 读完后自己删除。若这里删了，前端就只能播到"文件不存在"。
+  if ($Resolve) {
+    Write-Output ('RESOLVE=' + $fx.FullName)
+    Write-Output ('RESOLVE_KIND=' + $Kind)
+    if ($gainTmp) { Write-Output 'RESOLVE_GAINED=1' } else { Write-Output 'RESOLVE_GAINED=0' }
+    return
+  }
+
   try {
     $alias = 'dshnote' + (Get-Random -Maximum 100000)
     $open = [DshNotifyMci]::mciSendString('open "' + $fx.FullName + '" alias ' + $alias + ' wait', $null, 0, [IntPtr]::Zero)
@@ -712,6 +748,15 @@ if ($script:voiceMissNote) { Write-NotifyLog 'voice-miss' $script:voiceMissNote 
 # 统一的后缀标记：**日志与 Write-Host 都要拼**，否则用户当场（-Preview）看不到，
 # 只有事后翻日志才知道被换了音色 —— 那正是 issue #1 抱怨的"静默"。
 $missTag = if ($script:voiceMissNote) { ' [voice-miss]' } else { '' }
+
+# -Resolve：到此为止。**不要**再写 toast/preview 日志 —— 这次调用只是"问一句选什么"，
+# 既没弹窗也没出声，若照旧记一条 `[toast]`，事后翻日志会以为真的播过。
+# 但**必须**先跑一次 Play-VoiceLine：选音与增益就发生在它内部，
+# 它见到 -Resolve 只打印 RESOLVE=... 不播（见函数开头注释）。
+if ($Resolve) {
+  if (-not $NoSound) { Play-VoiceLine }
+  exit 0
+}
 
 if ($Preview) {
   if (-not $NoSound) { Play-VoiceLine }

@@ -52,6 +52,8 @@ function mkFullCfg() {
     // 音源
     audioSource: 'tts', showToast: true, ttsVoice: 'X', ttsRate: 1,
     jumpWhenBackground: true, jumpWhenForeground: true, devReload: true,
+    // v0.5.12 播放通道（auto = 优先由 GUI 窗口播，powershell = 退回旧行为）
+    audioTransport: 'auto',
     // 冷却
     debounceMs: 1000, globalCooldownMs: 2000, idleGateTimeoutMs: 3000,
     // v0.4.16 增益

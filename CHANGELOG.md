@@ -3,26 +3,31 @@
 > 本文件由 `tools/release-build.ps1` 从开发提交自动生成，**请勿手工编辑**。
 > 只列面向使用者的变更（新增功能与修复），不含内部维护提交。
 
+## v0.6.0 — 2026-11-27
+
+- feat(notify-say): 播放通道改为渲染进程 WebAudio，修 powershell.exe 应用音量被拉低即静音 (v0.6.0)
+
 ## v0.5.11 — 2026-11-27
 
 - fix(notify-say): 空闲门改静默期判定，修子代理交接瞬间误播「完成」(v0.5.11)
 
+## v0.5.10 — 2026-11-26
+
+- style(dsh-notify-say): 贴合 DSH 设计系统美化设置页 UI 并补齐协作留痕
+
 ## v0.5.9 — 2026-11-26
 
-- fix(ci): Node 20 静态 import globSync 导致 CI 连红四次，加 D20 判据锁住
 - fix(toast): 收录 PR #4 的发通知身份探测，并修其致命顺序 bug
 
 ## v0.5.8 — 2026-11-24
 
-- feat(ps7): 统一到 PowerShell 7 —— 四层防呆 + C7 静态闸（ADR-0015）
-- fix(ps7): 运行时脚本不再带 #Requires 7.0，测试按两解释器分工（踩坑 #494）
+- feat(ps7): 统一到 PowerShell 7 —— 四层防呆 + C7 静态闸
+- fix(ps7): 运行时脚本不再带 #Requires 7.0，测试按两解释器分工
 - feat(ps7): 用户 CLI notify-config.ps1 退回 5.1 兼容 —— 它随 npm 包发给用户，而 Windows 出厂只有 5.1
-- fix(release): release.ps1 用 pwsh 启动 release-build.ps1，否则 0.5.8 发版第 3 步必挂
 
 ## v0.5.7 — 2026-11-23
 
 - fix(notify-say): #5 PTC/code-mode 下提问提醒永不触发（v0.5.7）
-- fix(release): 发布包的 scripts 改为继承源，别让 L8 卡死发版
 
 ## v0.5.6 — 2026-11-23
 
@@ -36,9 +41,6 @@
 
 - fix(voice): 首帧配置也要走迁移 —— refreshConfig 抛异常时老用户会停在未迁移状态
 - fix(voice): 迁移判据只看 config.json —— 真机上 patch 层无法区分「显式选择」与「schema 默认」
-- fix(test): D16b 只扫被 git 跟踪的文件，不再把 .snapshots 历史快照算成违规
-- fix(release): 发布包 package.json 的 CRLF，以及 D16b 在三种仓库形态下的误报
-- fix(test): 测试不再污染用户真实 notify.log（v0.5.4）
 
 ## v0.5.3 — 2026-10-24
 
@@ -51,10 +53,7 @@
 - feat(voice): 新增 4 个中文音色（EmotiVoice 生成），自带「温柔女声」
 - fix(voice): 修正音色数量与引擎措辞（自查发现，避免中文音色被冒称为 VOICEVOX）
 - fix(voice): 语音包区「核心包只带 1 个音色」改为 2 个
-- fix(test): 中文音色「整组缺席」曾静默通过 + 修 CHANGELOG 在 git 根布局下失效
 - fix(package): .gitattributes 不进 npm 包，且 D19 判据自身有两个方向都不对
-- fix(test): D19j 补上三处「判据被兜底顶替」的盲区，并修掉一条理由说反的规则
-- fix(test): 白名单项数收敛成单一事实源，修掉 D19b/D19f 口径分叉
 
 ## v0.5.0 — 2026-10-22
 
@@ -64,7 +63,6 @@
 
 - fix(config): $DSH_HOME 缺失时回落到 ~/.dsh（修复「保存失败：no-home」）
 - refactor: 插件目录与安装名统一为 dsh-notify-say（旧名 dsh-notify-desktop 退役）
-- fix(build): 目录改名后 CHANGELOG 生成器要跟到旧路径的历史
 - feat(diagnostics): 诊断文件补上 home 解析来源与实际配置路径（v0.4.89）
 
 ## v0.4.87 — 2026-10-20
@@ -175,14 +173,6 @@
 
 - feat(update): v0.4.48 —— 检查更新 + 引导升级（不做自动更新）
 
-## v0.4.46 — 2026-10-18
-
-- fix(test): v0.4.46 —— 修「本地绿、CI 红」+ 发版流程补发布包内测试
-
-## v0.4.45 — 2026-10-18
-
-- feat(release): v0.4.45 —— CHANGELOG 自动生成 + 垃圾文件闸
-
 ## v0.4.44 — 2026-10-18
 
 - feat(reload): v0.4.44 —— watcher 可观测诊断 + 确认热重载已修好
@@ -240,17 +230,9 @@
 
 - feat(store)!: v0.4.31 —— 改为一音色一目录 + 下载安装模块
 
-## v0.4.30 — 2026-10-18
-
-- fix(test): v0.4.30 —— D1 区分开发/发布环境（CI 抓到）
-
 ## v0.4.29 — 2026-10-18
 
 - feat(store): v0.4.29 —— 语音包双区域存储层 + 修 4 项审阅问题
-
-## v0.4.28 — 2026-10-18
-
-- fix(test): v0.4.28 —— R4 改为按能力 skip（Node 20 第三轮）
 
 ## v0.4.27 — 2026-10-18
 
@@ -259,10 +241,6 @@
 ## v0.4.26 — 2026-10-18
 
 - fix(compat): v0.4.26 —— 修 Node 20 兼容性（CI 首跑就抓到）
-
-## v0.4.25 — 2026-10-18
-
-- feat(ci): v0.4.25 —— 修 P0 回归 + 公开测试与 CI
 
 ## v0.4.24 — 2026-10-18
 
@@ -277,10 +255,6 @@
 - fix(compliance)!: v0.4.22 —— 按外部审阅意见修复 5 项合规问题
 - feat(audit): v0.4.22 —— 音色许可审核体系 + 新增 2 个禁止项
 
-## v0.4.21 — 2026-10-18
-
-- feat(release)!: v0.4.21 —— 硬性阻断个人声音样本进发布包 + 语音包分发方案
-
 ## v0.4.20 — 2026-10-18
 
 - feat(tools): 一键发版脚本 tools/release.ps1
@@ -288,7 +262,6 @@
 
 ## v0.4.19 — 2026-10-18
 
-- fix(release): v0.4.19 —— 版本号补齐 + 加自动化一致性检查
 - refactor!: 改名 dsh-notify-desktop → dsh-notify-say（npm 原名已被占用）
 - fix: 补完改名遗漏 + 第三方声明进发布包
 

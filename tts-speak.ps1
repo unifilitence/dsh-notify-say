@@ -54,7 +54,15 @@ param(
   [ValidateRange(-10, 10)]
   [int]$Rate = 0,
   [int]$Volume = -1,
-  [switch]$Preview
+  [switch]$Preview,
+  # v0.6.0：**只合成、不播放**，把 wav 写到这个路径并打印 `RESOLVE=<path>`。
+  #
+  # 为什么需要：WebAudio 通道由渲染进程出声（有独立混音器身份），
+  # 但合成逻辑（发音人选择、语速、音量）只应该有一份 —— 就在本脚本。
+  # Node 侧拿到 wav 字节喂给前端；需要回退 PowerShell 时，再用原路径播这个文件。
+  #
+  # ⚠️ 文件由调用方负责删除（本脚本不清理）。
+  [string]$OutFile = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -132,6 +140,28 @@ try {
   if (-not (Test-Path -LiteralPath $tmp) -or (Get-Item -LiteralPath $tmp).Length -lt 1000) {
     Write-Output '[tts] FAIL 合成结果为空'
     exit 3
+  }
+
+  # ── -OutFile：只合成、不播放（v0.6.0）──────────────────────────────────
+  #
+  # 与 dsh-notify.ps1 的 -Resolve 是同一套思路：让"怎么合成"只有一份实现，
+  # 播放交给渲染进程。这里把临时 wav 挪到调用方指定位置，报路径就退出。
+  if ($OutFile) {
+    try {
+      $dir = Split-Path -Parent $OutFile
+      if ($dir -and -not (Test-Path -LiteralPath $dir)) {
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+      }
+      Move-Item -LiteralPath $tmp -Destination $OutFile -Force
+    } catch {
+      # 搬不动就把临时文件也收掉，别在 %TEMP% 里留垃圾
+      try { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue } catch { }
+      Write-Output ("[tts] FAIL 无法写出 OutFile：" + $_.Exception.Message)
+      exit 5
+    }
+    Write-Output ('RESOLVE=' + $OutFile)
+    Write-Log "已合成（未播放）：$Text -> $OutFile"
+    exit 0
   }
 
   # ── 播放（MCI，与语音包同一条路径，便于统一音量）──────────────────────────
